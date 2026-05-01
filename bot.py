@@ -127,8 +127,8 @@ def format_response(expense: dict) -> str:
         return f"❌ Parse Error: {expense['error_message']}\n\nTry: 'nasi lemak 12' or 'laksa 15.50'"
 
     return (
-        f"✅ **Expense Recorded**\n"
-        f"🍽️  Food: {expense['food']}\n"
+        f"✅ Expense Recorded\n"
+        f"🍽️ Food: {expense['food']}\n"
         f"💰 Amount: RM {expense['amount']:.2f}\n"
         f"🕐 Time: {expense['timestamp']}\n"
         f"📊 Confidence: {expense['confidence']:.0%}"
@@ -138,7 +138,7 @@ def format_response(expense: dict) -> str:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Start command handler."""
     await update.message.reply_text(
-        "🍽️ **Money Tracker Bot Started!**\n\n"
+        "🍽️ Money Tracker Bot Started!\n\n"
         "Tell me what you ate and how much you spent:\n"
         "Examples:\n"
         "• nasi lemak 12\n"
@@ -146,8 +146,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "• chicken rice RM10\n\n"
         "Commands:\n"
         "/stats - View spending summary\n"
-        "/reset - Clear all transactions",
-        parse_mode="Markdown",
+        "/reset - Clear all transactions"
     )
 
 
@@ -164,17 +163,17 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     average = total / count if count > 0 else 0
 
     stats_text = (
-        f"📊 **Spending Summary**\n\n"
-        f"Total Spent: **RM {total:.2f}**\n"
-        f"Meals: **{count}**\n"
-        f"Average: **RM {average:.2f}**\n\n"
-        f"**Recent Meals:**\n"
+        f"📊 Spending Summary\n\n"
+        f"Total Spent: RM {total:.2f}\n"
+        f"Meals: {count}\n"
+        f"Average: RM {average:.2f}\n\n"
+        f"Recent Meals:\n"
     )
 
     for t in transactions[-5:]:  # Show last 5
         stats_text += f"• {t['food']}: RM {t['amount']:.2f} ({t['timestamp']})\n"
 
-    await update.message.reply_text(stats_text, parse_mode="Markdown")
+    await update.message.reply_text(stats_text)
 
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -210,7 +209,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     # Reply to user
     response = format_response(expense)
-    await update.message.reply_text(response, parse_mode="Markdown")
+    await update.message.reply_text(response)
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
