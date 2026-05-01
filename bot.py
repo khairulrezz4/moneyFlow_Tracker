@@ -124,7 +124,39 @@ def save_transaction(expense: dict) -> None:
 def format_response(expense: dict) -> str:
     """Format bot response for user."""
     if expense["status"] == "error":
-        return f"❌ Parse Error: {expense['error_message']}\n\nTry: 'nasi lemak 12' or 'laksa 15.50'"
+        # Humanized error messages with helpful guidance
+        error_msg = expense.get("error_message", "")
+        
+        if "food" in error_msg.lower() or "missing" in error_msg.lower():
+            return (
+                "🍽️ I need both the food name AND amount!\n\n"
+                "Please tell me:\n"
+                "• What did you eat?\n"
+                "• How much did it cost?\n\n"
+                "Examples:\n"
+                "✓ nasi lemak 12\n"
+                "✓ laksa 15.50\n"
+                "✓ chicken rice RM10\n"
+                "✓ teh tarik 5"
+            )
+        elif "amount" in error_msg.lower() or "rm" in error_msg.lower():
+            return (
+                "💰 I need the price in RM!\n\n"
+                "Format: [Food Name] [Amount]\n\n"
+                "Examples:\n"
+                "✓ mee goreng 8\n"
+                "✓ roti canai 3.50\n"
+                "✓ coffee 5 RM"
+            )
+        else:
+            return (
+                "🤔 I didn't catch that!\n\n"
+                "Please tell me what you ate and how much:\n"
+                "✓ nasi lemak 12\n"
+                "✓ laksa 15.50\n"
+                "✓ chicken rice RM10\n\n"
+                "Or use /stats to see your spending"
+            )
 
     return (
         f"✅ Expense Recorded\n"
