@@ -11,7 +11,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-import litellm
+import google.generativeai as genai
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import (
@@ -30,8 +30,9 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DATABASE_FILE = os.getenv("DATABASE_FILE", "transactions.json")
 
-# Initialize litellm
-litellm.api_key = GEMINI_API_KEY
+# Initialize Gemini
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel("gemini-pro")
 
 
 def load_system_prompt() -> str:
@@ -46,7 +47,7 @@ def load_system_prompt() -> str:
 def parse_expense(user_input: str, system_prompt: str) -> dict:
     """
     Parse user input to extract food name, amount, and timestamp.
-    Uses Gemini 3 Flash with deterministic temperature.
+    Uses Gemini Pro with deterministic temperature.
 
     Args:
         user_input: User message (e.g., "nasi lemak 12")
@@ -56,18 +57,16 @@ def parse_expense(user_input: str, system_prompt: str) -> dict:
         {"food": str, "amount": float, "timestamp": str, "confidence": float, "status": str}
     """
     try:
-        response = litellm.completion(
-            model="google/gemini-3.5-flash",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_input},
-            ],
-            max_tokens=200,
-            temperature=0.0,  # Deterministic parsing
+        response = model.generate_content(
+            contents=f"{system_prompt}\n\nUser message: {user_input}",
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.0,
+                max_output_tokens=200,
+            )
         )
 
         # Extract JSON from response
-        response_text = response.choices[0].message.content.strip()
+        response_text = response.text.strip()
 
         # Parse JSON
         result = json.loads(response_text)
