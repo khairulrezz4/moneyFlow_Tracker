@@ -1,0 +1,554 @@
+# System Skills Framework - YAML Configuration
+# Version: 1.0
+# Purpose: Structured, reusable skills for developer workflows
+# Format: YAML with metadata for machine parsing and LLM integration
+
+skills:
+  # ============================================
+  # DEBUGGING & ERROR HANDLING
+  # ============================================
+  
+  - id: debug_error
+    name: Error Debugging
+    category: debugging
+    description: Convert cryptic errors into actionable fixes
+    token_cost: 150-300
+    difficulty: easy
+    
+    prerequisites:
+      - error_message: true
+      - line_number: true
+      - code_context: true
+    
+    steps:
+      - Identify error type (TypeError, AttributeError, ImportError, etc.)
+      - Extract exact error message
+      - Locate file and line number
+      - Provide 3-5 lines of code context around error
+      - Ask: "Why does this error occur and how do I fix it?"
+    
+    input_format:
+      error_type: string
+      message: string
+      location: "file.py:line_num"
+      context: "code snippet"
+    
+    output_format:
+      root_cause: string
+      fix: "code block"
+      verification: string
+    
+    example:
+      input: |
+        Error Type: ImportError
+        Message: "No module named 'gepa'"
+        Location: optimize_parser.py:5
+        Context: from gepa import optimize
+      output: |
+        Root Cause: gepa not installed in current environment
+        Fix: pip install gepa[full]
+        Verification: python -c "import gepa; print(gepa.__version__)"
+    
+    related_skills:
+      - error_interpretation
+      - dependency_management
+    
+    anti_patterns:
+      - "Error just appeared" (no context)
+      - "My code doesn't work" (too vague)
+      - Pasting entire traceback without summarization
+
+  - id: error_interpretation
+    name: Error Message Formatting
+    category: debugging
+    description: Structure error reports for clarity
+    token_cost: 100-200
+    difficulty: easy
+    
+    template: |
+      Error Type: [Exception class]
+      Message: [exact error text]
+      Location: [file:line]
+      Context: [3-5 surrounding lines]
+      Steps to Reproduce: [optional]
+    
+    benefits:
+      - Reduces back-and-forth clarification
+      - Haiku understands structured input better
+      - Saves 100+ tokens per error fix
+
+  # ============================================
+  # CODE REVIEW & ANALYSIS
+  # ============================================
+
+  - id: code_review
+    name: Code Review
+    category: analysis
+    description: Get targeted feedback on specific code concerns
+    token_cost: 400-600
+    difficulty: medium
+    
+    prerequisites:
+      - file_path: true
+      - concern: true
+      - code_snippet: optional
+    
+    steps:
+      - Specify file or file range
+      - State exact concern (performance, security, style, logic)
+      - Provide code snippet or function name
+      - Ask: "Review [function] for [specific concern]"
+    
+    concerns:
+      - performance: Optimize for speed/memory
+      - security: Identify vulnerabilities
+      - readability: Improve clarity
+      - maintainability: Reduce complexity
+      - testing: Add or improve tests
+      - style: Follow conventions
+    
+    request_format: |
+      "Review {file}::{function} for {concern}"
+      Example: "Review bot.py::handle_expense for performance"
+    
+    anti_patterns:
+      - "Review my code" (no concern specified)
+      - Asking for style review when logic is broken
+      - Mixing multiple concerns in one review
+
+  - id: refactor
+    name: Code Refactoring
+    category: analysis
+    description: Restructure code to meet a specific goal
+    token_cost: 500-800
+    difficulty: medium
+    
+    request_format: |
+      "Refactor {function/file} to {goal}"
+      Example: "Refactor parse_expense to reduce cyclomatic complexity"
+    
+    valid_goals:
+      - reduce_duplication
+      - improve_readability
+      - optimize_performance
+      - increase_testability
+      - reduce_complexity
+      - modernize_patterns
+    
+    output_includes:
+      - before_code: original function
+      - after_code: refactored version
+      - rationale: why changes improve code
+      - testing: how to verify changes work
+
+  # ============================================
+  # FILE OPERATIONS & NAVIGATION
+  # ============================================
+
+  - id: file_read
+    name: File Reading
+    category: files
+    description: Efficiently read workspace files
+    token_cost: 200-400
+    difficulty: easy
+    
+    best_practices:
+      - read_large_ranges: Read 50-100 lines at once, not line-by-line
+      - parallel_reads: Request multiple files in one message
+      - absolute_paths: Always use full paths
+      - line_context: Include line numbers for clarity
+    
+    request_format: |
+      "Read {file}:{start_line}-{end_line}"
+      "Read {file1}:{lines} and {file2}:{lines}, then show me where {symbol} is called"
+    
+    example_efficient: |
+      "Read bot.py:1-50 and utils.py:100-120, then show integration points"
+    
+    example_inefficient: |
+      "Read bot.py line 5"
+      "Read bot.py line 10"
+      "Read bot.py line 15"
+
+  - id: file_search
+    name: File Search & Navigation
+    category: files
+    description: Find files and symbols across workspace
+    token_cost: 100-300
+    difficulty: easy
+    
+    search_types:
+      - pattern: "Find files matching pattern (*.py, src/*, etc.)"
+      - symbol: "Locate function, class, or variable definition"
+      - string: "Search for string across files"
+      - usage: "Find where symbol is used"
+    
+    request_format: |
+      "Find all *.py files in src/"
+      "Where is the parse_expense function defined?"
+      "Show me all calls to handle_message"
+    
+    efficient_patterns:
+      - use_relative_paths: src/ instead of absolute
+      - combine_searches: "Find X and show all usages" in one ask
+      - grep_for_overview: "Search for 'TODO|FIXME|BUG' to find issues"
+
+  - id: file_create
+    name: File Creation
+    category: files
+    description: Create new files and project scaffolding
+    token_cost: 200-400 (one-time)
+    difficulty: easy
+    
+    best_practices:
+      - batch_creates: Ask for multiple files at once
+      - provide_structure: State folder layout upfront
+      - use_templates: Reference existing patterns
+      - avoid_iteration: Don't create, then modify, then modify again
+    
+    request_format: |
+      "Create files: {file1}, {file2}, {file3} with {description}"
+      Example: "Create tests/test_parser.py and tests/fixtures.py for expense parsing"
+    
+    efficient_approach: |
+      Bad:  Create bot.py → then "add logging" → then "fix imports"
+      Good: "Create bot.py with logging, error handling, and imports for Telegram API"
+
+  # ============================================
+  # TESTING & VALIDATION
+  # ============================================
+
+  - id: testing
+    name: Testing & Validation
+    category: quality
+    description: Write tests for edge cases and integration points
+    token_cost: 300-500 (one-time)
+    difficulty: medium
+    
+    test_types:
+      - unit: Test individual functions in isolation
+      - integration: Test interactions between components
+      - edge_case: Boundary conditions, None, empty, negative values
+      - error: Verify error handling works
+      - regression: Verify fixes don't break existing functionality
+    
+    request_format: |
+      "Write tests for {function} covering: {case1}, {case2}, {case3}"
+      Example: "Write tests for parse_expense covering: empty input, None, invalid amounts"
+    
+    test_template: |
+      def test_case(input_val, expected):
+          result = function(input_val)
+          assert result == expected, f"Expected {expected}, got {result}"
+    
+    coverage_targets:
+      - happy_path: Main use case
+      - edge_cases: Boundaries, None, empty
+      - error_cases: Invalid inputs, exceptions
+      - integration: Multi-component interactions
+
+  - id: validation
+    name: Code Validation
+    category: quality
+    description: Check code for syntax errors before execution
+    token_cost: 50-100
+    difficulty: easy
+    
+    when_to_use:
+      - Before running new code
+      - Generated code from LLM
+      - Complex refactors
+      - Integration points
+    
+    checks:
+      - syntax: Valid Python/JS/etc syntax
+      - imports: All imports available
+      - types: Type annotations correct (if using)
+      - logic: No obvious logical errors
+
+  # ============================================
+  # DOCUMENTATION & COMMUNICATION
+  # ============================================
+
+  - id: documentation
+    name: Code Documentation
+    category: docs
+    description: Write minimal but complete code docs
+    token_cost: 100-200 (one-time)
+    difficulty: easy
+    
+    principles:
+      - minimal: Comments only for "why", not "what"
+      - complete: Docstrings include inputs, outputs, exceptions
+      - concise: 1-line summary + specific details per line of logic
+      - searchable: Include category/topic keywords
+    
+    doc_formats:
+      function: |
+        # Returns: Type | Raises: Exception
+        def func(arg):
+            # Does X with arg
+            ...
+      
+      class: |
+        # Manages X; Key methods: method1, method2
+        class Manager:
+            ...
+      
+      complex_logic: |
+        # Step 1: Extract category (fuzzy match)
+        # Step 2: Normalize amount (convert currency)
+        # Step 3: Validate date (ISO format)
+
+  - id: commit_message
+    name: Commit Message Writing
+    category: docs
+    description: Write clear, searchable commit messages
+    token_cost: 50 (minimal)
+    difficulty: easy
+    
+    format: |
+      {type}({scope}): {subject}
+      
+      {body}
+      
+      Fixes: #{issue_number}
+    
+    types:
+      - feat: New feature
+      - fix: Bug fix
+      - refactor: Code reorganization
+      - test: Add/update tests
+      - docs: Documentation changes
+      - chore: Maintenance, dependencies
+    
+    example: |
+      fix(parser): handle negative amounts in expense extraction
+      
+      - Added validation to reject amounts < 0
+      - Updated test cases to cover negative input
+      - Prevents data corruption in transaction history
+      
+      Fixes: #42
+
+  # ============================================
+  # PERFORMANCE & OPTIMIZATION
+  # ============================================
+
+  - id: token_budgeting
+    name: Token Budget Planning
+    category: performance
+    description: Estimate and track token usage per task
+    token_cost: "0 (reference only)"
+    difficulty: easy
+    
+    typical_breakdown: |
+      Context gathering:    500-1000 tokens (read files, search)
+      Analysis/diagnosis:   200-500 tokens  (identify issues)
+      Solution generation:  500-1000 tokens (code + explanation)
+      Verification/testing: 200-300 tokens  (validate changes)
+      ──────────────────────────────────────
+      Total per task:       ~1500-3000 tokens
+    
+    budget_tips:
+      - avoid_unbounded: "Explain entire codebase" = expensive
+      - prefer_focused: "Show how X interacts with Y" = cheap
+      - reuse_context: Store patterns in memory/docs
+      - batch_related: Ask 2-3 related things in one message
+    
+    cost_by_task:
+      bug_fix: 300-500
+      code_review: 400-600
+      refactor: 500-800
+      feature_implementation: 1000-2000
+      architecture_review: 1500-2500
+      testing: 300-500
+      documentation: 100-200
+
+  - id: context_management
+    name: Context Window Management
+    category: performance
+    description: Use 200K context efficiently without waste
+    token_cost: "0 (reference only)"
+    difficulty: easy
+    
+    best_practices:
+      - discard_old_context: Summarize progress before new tasks
+      - link_files: Use paths, let Haiku load what needed
+      - batch_questions: Ask 2-3 related things at once
+      - avoid_redundancy: Don't repeat errors in multiple messages
+    
+    when_to_archive:
+      - task_completed: Summarize outcome, clear buffer
+      - high_usage: Context window > 100K
+      - context_switch: Moving to unrelated project
+    
+    archive_template: |
+      ## Task Summary
+      - Completed: [list items]
+      - Remaining: [list items]
+      - Key decisions: [list]
+      - Next steps: [list]
+
+  # ============================================
+  # DEPENDENCIES & ENVIRONMENT
+  # ============================================
+
+  - id: dependency_management
+    name: Dependency Management
+    category: environment
+    description: Install, update, and verify package dependencies
+    token_cost: 100-300
+    difficulty: easy
+    
+    package_managers:
+      - pip: Python (pip install package)
+      - npm: Node.js (npm install package)
+      - poetry: Python (poetry add package)
+      - conda: Any language (conda install package)
+    
+    operations:
+      install: "Add new package"
+      update: "Upgrade existing package"
+      freeze: "Lock versions (requirements.txt, package-lock.json)"
+      verify: "Check if package installed and working"
+    
+    request_format: |
+      "Install {package} via {manager}"
+      "Verify that {package} is available and working"
+      "Lock dependencies to {requirements.txt|package-lock.json}"
+    
+    best_practices:
+      - freeze_versions: Use lock files for reproducibility
+      - isolate_envs: Use venv, poetry, conda for isolation
+      - document_deps: Keep setup instructions updated
+
+  - id: environment_setup
+    name: Environment Setup
+    category: environment
+    description: Bootstrap development environment
+    token_cost: 300-500 (one-time)
+    difficulty: medium
+    
+    steps:
+      - Create virtual environment (venv, poetry, conda)
+      - Install dependencies from lock file or requirements.txt
+      - Configure environment variables (.env)
+      - Run initial setup/migration scripts
+      - Verify all components working
+    
+    checklist: |
+      ☐ Python/Node.js version specified
+      ☐ Virtual environment created and activated
+      ☐ Dependencies installed and locked
+      ☐ API keys/secrets in .env (not committed)
+      ☐ Database initialized (if applicable)
+      ☐ All imports verified working
+      ☐ Initial tests passing
+
+  # ============================================
+  # DEPLOYMENT & OPERATIONS
+  # ============================================
+
+  - id: build_task
+    name: Build Task Setup
+    category: deployment
+    description: Configure build, run, and test tasks
+    token_cost: 200-300
+    difficulty: medium
+    
+    task_types:
+      - build: Compile, bundle, or prepare for release
+      - run: Start development server or app
+      - test: Execute test suite
+      - lint: Check code quality
+      - format: Auto-format code
+    
+    task_file_format: |
+      // tasks.json (VS Code)
+      {
+        "version": "2.0.0",
+        "tasks": [
+          {
+            "label": "Run tests",
+            "type": "shell",
+            "command": "pytest",
+            "problemMatcher": "$pytest"
+          }
+        ]
+      }
+    
+    request_format: |
+      "Create a build task for {project type}"
+      Example: "Create build task to run pytest and lint via pylint"
+
+  - id: deployment
+    name: Deployment
+    category: deployment
+    description: Package and deploy application
+    token_cost: 500-1000 (one-time or per deploy)
+    difficulty: hard
+    
+    prerequisites:
+      - tests_passing: true
+      - code_reviewed: true
+      - version_bumped: true
+    
+    steps:
+      - Verify all tests passing
+      - Update version number
+      - Build/package application
+      - Run deployment checks (security, permissions)
+      - Execute deployment script
+      - Verify in production environment
+      - Monitor for errors
+
+# ============================================
+# METADATA & INDEXING
+# ============================================
+
+metadata:
+  version: "1.0"
+  last_updated: "2026-05-01"
+  total_skills: 23
+  categories:
+    - debugging: 2 skills
+    - analysis: 2 skills
+    - files: 3 skills
+    - quality: 2 skills
+    - docs: 2 skills
+    - performance: 2 skills
+    - environment: 2 skills
+    - deployment: 2 skills
+  
+  by_difficulty:
+    easy: 12 skills (good for getting started)
+    medium: 8 skills (require planning)
+    hard: 3 skills (rare, high stakes)
+  
+  by_token_cost:
+    under_200: 6 skills (quick operations)
+    200-500: 10 skills (standard tasks)
+    500-1000: 5 skills (complex work)
+    1000+: 2 skills (major features)
+    zero_cost: 3 skills (reference only)
+
+# ============================================
+# USAGE GUIDE
+# ============================================
+
+usage: |
+  1. Identify task category (debugging, analysis, files, etc.)
+  2. Find matching skill by name or id
+  3. Check prerequisites and token cost
+  4. Follow request format and best practices
+  5. Execute task
+  6. Log completion (skill_id, duration, tokens used)
+  
+  Example workflow:
+  - Task: "Fix ImportError in bot.py"
+  - Skill: debug_error (id: debug_error)
+  - Format error properly
+  - Follow steps: identify type → extract message → provide context
+  - Ask: "Why does this occur and how do I fix it?"
+  - Cost: ~200 tokens

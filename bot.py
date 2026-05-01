@@ -1,0 +1,243 @@
+"""
+Money Tracker Telegram Bot
+Tracks meal expenses via natural language parsing with Gemini 3 Flash
+
+Usage:
+    python bot.py
+"""
+
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+
+import litellm
+from dotenv import load_dotenv
+from telegram import Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
+
+# Load environment variables
+load_dotenv()
+
+# Configuration
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+DATABASE_FILE = os.getenv("DATABASE_FILE", "transactions.json")
+
+# Initialize litellm
+litellm.api_key = GEMINI_API_KEY
+
+
+def load_system_prompt() -> str:
+    """Load the optimized system prompt from file."""
+    try:
+        with open("best_system_prompt.txt", "r") as f:
+            return f.read()
+    except FileNotFoundError:
+        raise FileNotFoundError("best_system_prompt.txt not found. Cannot proceed.")
+
+
+def parse_expense(user_input: str, system_prompt: str) -> dict:
+    """
+    Parse user input to extract food name, amount, and timestamp.
+    Uses Gemini 3 Flash with deterministic temperature.
+
+    Args:
+        user_input: User message (e.g., "nasi lemak 12")
+        system_prompt: System instructions for parsing
+
+    Returns:
+        {"food": str, "amount": float, "timestamp": str, "confidence": float, "status": str}
+    """
+    try:
+        response = litellm.completion(
+            model="google/gemini-3.5-flash",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_input},
+            ],
+            max_tokens=200,
+            temperature=0.0,  # Deterministic parsing
+        )
+
+        # Extract JSON from response
+        response_text = response.choices[0].message.content.strip()
+
+        # Parse JSON
+        result = json.loads(response_text)
+        return result
+
+    except json.JSONDecodeError:
+        return {
+            "food": None,
+            "amount": None,
+            "timestamp": None,
+            "confidence": 0.0,
+            "status": "error",
+            "error_message": "Failed to parse response as JSON",
+        }
+    except Exception as e:
+        return {
+            "food": None,
+            "amount": None,
+            "timestamp": None,
+            "confidence": 0.0,
+            "status": "error",
+            "error_message": f"LLM error: {str(e)}",
+        }
+
+
+def load_transactions() -> list:
+    """Load transactions from JSON file."""
+    if Path(DATABASE_FILE).exists():
+        with open(DATABASE_FILE, "r") as f:
+            return json.load(f)
+    return []
+
+
+def save_transaction(expense: dict) -> None:
+    """Save a single transaction to database."""
+    transactions = load_transactions()
+    transactions.append(
+        {
+            "food": expense["food"],
+            "amount": expense["amount"],
+            "timestamp": expense["timestamp"],
+            "created_at": datetime.now().isoformat(),
+        }
+    )
+    with open(DATABASE_FILE, "w") as f:
+        json.dump(transactions, f, indent=2)
+
+
+def format_response(expense: dict) -> str:
+    """Format bot response for user."""
+    if expense["status"] == "error":
+        return f"❌ Parse Error: {expense['error_message']}\n\nTry: 'nasi lemak 12' or 'laksa 15.50'"
+
+    return (
+        f"✅ **Expense Recorded**\n"
+        f"🍽️  Food: {expense['food']}\n"
+        f"💰 Amount: RM {expense['amount']:.2f}\n"
+        f"🕐 Time: {expense['timestamp']}\n"
+        f"📊 Confidence: {expense['confidence']:.0%}"
+    )
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Start command handler."""
+    await update.message.reply_text(
+        "🍽️ **Money Tracker Bot Started!**\n\n"
+        "Tell me what you ate and how much you spent:\n"
+        "Examples:\n"
+        "• nasi lemak 12\n"
+        "• laksa 15.50\n"
+        "• chicken rice RM10\n\n"
+        "Commands:\n"
+        "/stats - View spending summary\n"
+        "/reset - Clear all transactions",
+        parse_mode="Markdown",
+    )
+
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show spending statistics."""
+    transactions = load_transactions()
+
+    if not transactions:
+        await update.message.reply_text("📊 No transactions recorded yet.")
+        return
+
+    total = sum(t["amount"] for t in transactions)
+    count = len(transactions)
+    average = total / count if count > 0 else 0
+
+    stats_text = (
+        f"📊 **Spending Summary**\n\n"
+        f"Total Spent: **RM {total:.2f}**\n"
+        f"Meals: **{count}**\n"
+        f"Average: **RM {average:.2f}**\n\n"
+        f"**Recent Meals:**\n"
+    )
+
+    for t in transactions[-5:]:  # Show last 5
+        stats_text += f"• {t['food']}: RM {t['amount']:.2f} ({t['timestamp']})\n"
+
+    await update.message.reply_text(stats_text, parse_mode="Markdown")
+
+
+async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Reset all transactions (confirm first)."""
+    await update.message.reply_text(
+        "⚠️ Clear all transactions? Reply with 'YES' to confirm."
+    )
+    context.user_data["awaiting_reset"] = True
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Main message handler - parse expense and save."""
+    user_input = update.message.text.strip()
+
+    # Handle reset confirmation
+    if context.user_data.get("awaiting_reset"):
+        if user_input.upper() == "YES":
+            with open(DATABASE_FILE, "w") as f:
+                json.dump([], f)
+            await update.message.reply_text("✅ All transactions cleared.")
+        else:
+            await update.message.reply_text("❌ Reset cancelled.")
+        context.user_data["awaiting_reset"] = False
+        return
+
+    # Parse expense
+    system_prompt = load_system_prompt()
+    expense = parse_expense(user_input, system_prompt)
+
+    # Save if successful
+    if expense["status"] == "success":
+        save_transaction(expense)
+
+    # Reply to user
+    response = format_response(expense)
+    await update.message.reply_text(response, parse_mode="Markdown")
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log and handle errors."""
+    print(f"Update {update} caused error {context.error}")
+
+
+def main() -> None:
+    """Start the bot."""
+    if not TELEGRAM_TOKEN or not GEMINI_API_KEY:
+        raise ValueError(
+            "Missing environment variables. Check .env file for TELEGRAM_TOKEN and GEMINI_API_KEY"
+        )
+
+    # Create application
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
+
+    # Add handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(CommandHandler("reset", reset))
+    application.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+    )
+
+    # Error handler
+    application.add_error_handler(error_handler)
+
+    # Start polling
+    print("🤖 Bot is running... (Press Ctrl+C to stop)")
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+
+if __name__ == "__main__":
+    main()

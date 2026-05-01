@@ -1,0 +1,5 @@
+python-telegram-bot==21.1
+litellm==1.0.0
+google-genai==0.3.0
+gepa[full]==0.2.0
+python-dotenv==1.0.0
