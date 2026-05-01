@@ -59,14 +59,23 @@ def parse_expense(user_input: str, system_prompt: str) -> dict:
     try:
         prompt = f"{system_prompt}\n\nUser input: {user_input}"
         response = model.generate_content(prompt)
-
-        # Extract JSON from response
         response_text = response.text.strip()
 
-        # Parse JSON
-        result = json.loads(response_text)
+        # Extract JSON from response (handle case where model returns extra text)
+        json_start = response_text.find('{')
+        json_end = response_text.rfind('}') + 1
+        
+        if json_start == -1 or json_end == 0:
+            raise ValueError("No JSON found in response")
+        
+        json_str = response_text[json_start:json_end]
+        result = json.loads(json_str)
+        
+        # Ensure required fields exist
         result.setdefault("status", "success")
         result.setdefault("confidence", 0.9)
+        result.setdefault("error_message", None)
+        
         return result
 
     except json.JSONDecodeError as e:
@@ -86,7 +95,7 @@ def parse_expense(user_input: str, system_prompt: str) -> dict:
             "timestamp": None,
             "confidence": 0.0,
             "status": "error",
-            "error_message": f"LLM error: {error_msg}",
+            "error_message": f"Parse error: {error_msg}",
         }
 
 
@@ -123,11 +132,12 @@ def save_transaction(expense: dict) -> None:
 
 def format_response(expense: dict) -> str:
     """Format bot response for user."""
-    if expense["status"] == "error":
+    if expense["status"] == "error" or expense.get("food") is None:
         # Humanized error messages with helpful guidance
-        error_msg = expense.get("error_message", "")
+        error_msg = expense.get("error_message", "").lower()
         
-        if "food" in error_msg.lower() or "missing" in error_msg.lower():
+        # Missing both or missing food
+        if "food" in error_msg or "missing" in error_msg:
             return (
                 "🍽️ I need both the food name AND amount!\n\n"
                 "Please tell me:\n"
@@ -139,7 +149,8 @@ def format_response(expense: dict) -> str:
                 "✓ chicken rice RM10\n"
                 "✓ teh tarik 5"
             )
-        elif "amount" in error_msg.lower() or "rm" in error_msg.lower():
+        # Missing amount
+        elif "amount" in error_msg or "price" in error_msg:
             return (
                 "💰 I need the price in RM!\n\n"
                 "Format: [Food Name] [Amount]\n\n"
@@ -148,6 +159,7 @@ def format_response(expense: dict) -> str:
                 "✓ roti canai 3.50\n"
                 "✓ coffee 5 RM"
             )
+        # Generic fallback
         else:
             return (
                 "🤔 I didn't catch that!\n\n"
