@@ -57,51 +57,57 @@ def parse_expense(user_input: str, system_prompt: str) -> dict:
         {"food": str, "amount": float, "timestamp": str, "confidence": float, "status": str}
     """
     try:
-        response = model.generate_content(
-            contents=f"{system_prompt}\n\nUser message: {user_input}",
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.0,
-                max_output_tokens=200,
-            )
-        )
+        prompt = f"{system_prompt}\n\nUser input: {user_input}"
+        response = model.generate_content(prompt)
 
         # Extract JSON from response
         response_text = response.text.strip()
 
         # Parse JSON
         result = json.loads(response_text)
+        result.setdefault("status", "success")
+        result.setdefault("confidence", 0.9)
         return result
 
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
         return {
             "food": None,
             "amount": None,
             "timestamp": None,
             "confidence": 0.0,
             "status": "error",
-            "error_message": "Failed to parse response as JSON",
+            "error_message": f"JSON parse error: {str(e)[:50]}",
         }
     except Exception as e:
+        error_msg = str(e)[:100]
         return {
             "food": None,
             "amount": None,
             "timestamp": None,
             "confidence": 0.0,
             "status": "error",
-            "error_message": f"LLM error: {str(e)}",
+            "error_message": f"LLM error: {error_msg}",
         }
 
 
 def load_transactions() -> list:
     """Load transactions from JSON file."""
     if Path(DATABASE_FILE).exists():
-        with open(DATABASE_FILE, "r") as f:
-            return json.load(f)
+        try:
+            with open(DATABASE_FILE, "r") as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
+        except (json.JSONDecodeError, IOError):
+            return []
     return []
 
 
 def save_transaction(expense: dict) -> None:
     """Save a single transaction to database."""
+    # Don't save failed parses
+    if expense.get("status") != "success" or not expense.get("food"):
+        return
+    
     transactions = load_transactions()
     transactions.append(
         {
@@ -214,10 +220,14 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 def main() -> None:
     """Start the bot."""
+    # Validate environment
     if not TELEGRAM_TOKEN or not GEMINI_API_KEY:
         raise ValueError(
-            "Missing environment variables. Check .env file for TELEGRAM_TOKEN and GEMINI_API_KEY"
+            "FATAL: Missing TELEGRAM_TOKEN or GEMINI_API_KEY in .env"
         )
+    
+    print("✅ Environment validated")
+    print(f"📁 Database: {DATABASE_FILE}")
 
     # Create application
     application = Application.builder().token(TELEGRAM_TOKEN).build()
